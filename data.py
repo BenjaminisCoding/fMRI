@@ -8,6 +8,8 @@ from fastmri.data import transforms, mri_data
 from fastmri.data.transforms import to_tensor, complex_center_crop
 import fastmri.data.transforms as T
 from physic import corrupt_coils 
+import cv2
+import numpy as np
 
 path = '/neurospin/optimed/BenjaminLapostolle/fast-mri_smal/'
 
@@ -51,20 +53,42 @@ def get_images_coils(kspace, target, c_abs = False):
         images = fastmri.complex_abs(images)
     return images
 
+def to_complex_tensor(tensor):
+    # Check if the tensor has the expected shape
+    if tensor.shape[-1] != 2:
+        raise ValueError("The last dimension of the input tensor must have size 2 to form complex numbers.")
+    
+    # Split the tensor into real and imaginary parts
+    real_part = tensor[..., 0]
+    imaginary_part = tensor[..., 1]
+    
+    # Combine the real and imaginary parts into a complex tensor
+    complex_tensor = torch.complex(real_part, imaginary_part)
+    
+    return complex_tensor
+
 def get_Smaps(image, images, samples_loc):
 
-    X, Y, Back = corrupt_coils(images, samples_loc)
+    images_c = to_complex_tensor(images)
+    X, Y, Back = corrupt_coils(images_c, samples_loc)    
+    images_c_2dim = to_tensor(images_c)
+    Smaps = torch.sqrt(images_c_2dim ** 2 / torch.sum(images_c_2dim ** 2, dim = 1))
+    Smaps_c = to_complex_tensor(Smaps)
+    mask = torch.Tensor(produce_mask(image)).unsqueeze(0).repeat(20,1,1).unsqueeze(0)
+    Smaps_c_final = Smaps_c * mask
+    return Smaps_c_final
 
+def produce_mask(image):
+    
     ### could use Otsu instead of approxiamte quantile 
-    img_ = torch.Tensor(image)
-    q = torch.quantile(torch.Tensor(img_),  0.6)
-    image_bin = torch.Tensor(img_).clone()
-    image_bin[torch.Tensor(img_) > q] = 1 
-    image_bin[torch.Tensor(img_) <= q] = 0 
-    mask = image_bin.unsqueeze(0)
-    mask = mask.repeat(20,1,1).unsqueeze(0)
+    q = np.quantile(image, 0.6)
+    image_bin = image.copy()
+    image_bin[image > q] = 1
+    image_bin[image <= q] = 0
+    contours, _ = cv2.findContours(image_bin.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    brain_mask = cv2.drawContours(np.zeros_like(image_bin.astype(np.uint8)), contours, -1, (255), thickness=cv2.FILLED)
+    return brain_mask
 
-    Smaps = torch.sqrt(Back ** 2 / torch.sum(Back ** 2, dim = 1)) * mask
-    return Smaps
+    
 
     

@@ -63,8 +63,8 @@ def corrupt_coils(images, samples_loc):
     n_img = imgs.shape[0]
     
     # Initialize tensors of zeros for x, y, and back
-    X = torch.zeros(1, n_img, imgs.shape[1], imgs.shape[2])
-    Back = torch.zeros(1, n_img, imgs.shape[1], imgs.shape[2])
+    X = torch.zeros(1, n_img, imgs.shape[1], imgs.shape[2], dtype=torch.complex64)
+    Back = torch.zeros(1, n_img, imgs.shape[1], imgs.shape[2], dtype=torch.complex64)
 
     for i in range(n_img):
         x, y, back = corrupt(imgs[i], samples_loc)
