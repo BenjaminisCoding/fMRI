@@ -7,6 +7,7 @@ import numpy as np
 from physic import corrupt
 from deepinv.models import WaveletDictDenoiser
 from tqdm import tqdm
+from utils import stand
 
 class ComplexDenoiser(torch.nn.Module):
     def __init__(self, denoiser):
@@ -19,13 +20,7 @@ class ComplexDenoiser(torch.nn.Module):
         denoised = denoised_batch[0:1, ...]+1j*denoised_batch[1:2, ...]
         return denoised
 
-def get_model(image, samples_loc, max_iter = 8, sigma = 0.01):
-    
-    x, _, _ = corrupt(image, samples_loc)
-    # Generate the physics
-    physics = Nufft(x[0, 0].shape, samples_loc, density=None, real=False)
-    y = physics.A(x)
-    back = physics.A_adjoint(y)
+def get_model(max_iter = 8, sigma = 0.01):
     
     # Load PnP denoiser backbone
     model = DRUNet(in_channels=1, out_channels=1, pretrained='download')
@@ -75,27 +70,30 @@ def get_model(image, samples_loc, max_iter = 8, sigma = 0.01):
         verbose=True,
         params_algo=params_algo,
     )
-    return algo, physics
+    return algo
 
-def FISTA(image, samples_loc):
+def FISTA(image, physics, stepsize = 0.1, max_iter = 100, Smaps = None, to_stand = False):
 
-    x, _, _ = corrupt(image, samples_loc)
+    # x, _, _ = corrupt(image, samples_loc)
+    x = torch.Tensor(image)
     # Generate the physics
-    physics = Nufft(x[0, 0].shape, samples_loc, density=None, real=False)
+    # physics = Nufft(x[0, 0].shape, samples_loc, density=None, real=False, Smaps = Smaps)
     y = physics.A(x)
     back = physics.A_adjoint(y)
+    if stand:
+        back = stand(back)
 
     data_fidelity = L2()
     a = 3  
     sigma = 0.01
-    stepsize = 0.1
+    # stepsize = 0.1
        
     # Select a prior
-    wav = WaveletDictDenoiser(non_linearity="soft", level=5, list_wv=['db8'], max_iter=10)
+    wav = WaveletDictDenoiser(non_linearity="soft", level=5, list_wv=['db4', 'db8'], max_iter=10)
     device = 'cpu'
     denoiser = ComplexDenoiser(wav).to(device)
     
-    max_iter = 100
+    # max_iter = 100
     
     # Initialize algo variables
     x_cur = back.clone().to(device)

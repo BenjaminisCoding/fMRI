@@ -11,7 +11,9 @@ def plot_rec(x, x_hat):
     
     plt.figure(figsize=(15,5))
     plt.subplot(131)
-    plt.imshow(np.real(x_hat).squeeze(), cmap='viridis')
+    # plt.imshow(np.real(x_hat).squeeze(), cmap='viridis')
+    plt.imshow(np.real(x_hat).squeeze())
+   
     plt.title('Reconstruction, PSNR = ' + str(psnr))
     plt.axis('off')
     plt.subplot(132)

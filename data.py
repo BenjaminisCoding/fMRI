@@ -13,7 +13,7 @@ import numpy as np
 
 path = '/neurospin/optimed/BenjaminLapostolle/fast-mri_smal/'
 
-def get_data(idx = 0, to_numpy = True):
+def get_data(idx = 0, to_numpy = True, moments = False):
 
     data_transform = T.UnetDataTransform(which_challenge="multicoil")
     dataset = mri_data.SliceDataset(
@@ -29,7 +29,10 @@ def get_data(idx = 0, to_numpy = True):
             continue    
         image, reconstruction, mean, std, fname, slice_num, _, kspace = batch
         if to_numpy:
-            return reconstruction[0].numpy(), kspace.numpy()
+            if moments:
+                return reconstruction[0].numpy(), kspace.numpy(), mean, std
+            else:
+                return reconstruction[0].numpy(), kspace.numpy()
         return reconstruction
 
 def get_images_coils(kspace, target, c_abs = False):
@@ -67,16 +70,16 @@ def to_complex_tensor(tensor):
     
     return complex_tensor
 
-def get_Smaps(image, images, samples_loc):
+def get_Smaps(image, images, physics):
 
     images_c = to_complex_tensor(images)
-    X, Y, Back = corrupt_coils(images_c, samples_loc)    
+    X, Y, Back = corrupt_coils(images_c, physics)    
     images_c_2dim = to_tensor(images_c)
     Smaps = torch.sqrt(images_c_2dim ** 2 / torch.sum(images_c_2dim ** 2, dim = 1))
     Smaps_c = to_complex_tensor(Smaps)
     mask = torch.Tensor(produce_mask(image)).unsqueeze(0).repeat(20,1,1).unsqueeze(0)
     Smaps_c_final = Smaps_c * mask
-    return Smaps_c_final
+    return Smaps_c_final.squeeze(0).numpy()
 
 def produce_mask(image):
     

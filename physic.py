@@ -40,7 +40,7 @@ class Nufft(LinearPhysics):
     def A_adjoint(self, kspace):
         return self.nufft.adj_op(kspace)
 
-def corrupt(image, samples_loc):
+def corrupt(image, physics):
 
     if isinstance(image, torch.Tensor):
         # If image is already a tensor, add batch and channel dimensions
@@ -50,15 +50,15 @@ def corrupt(image, samples_loc):
         image_torch = torch.from_numpy(image).unsqueeze(0).unsqueeze(0)
     
     x = image_torch.clone()
-    x = x/x.abs().max() #normalize the data, so it is in the range [0,1]
+    # x = x/x.abs().max() #normalize the data, so it is in the range [0,1]
     
     # Generate the physics
-    physics = Nufft(image_torch[0, 0].shape, samples_loc, density=None)
+    # physics = Nufft(image_torch[0, 0].shape, samples_loc, density=None)
     y = physics.A(x)
     back = physics.A_adjoint(y)
     return x, y, back
 
-def corrupt_coils(images, samples_loc):
+def corrupt_coils(images, physics):
     imgs = images.squeeze(0)  # because shape [1, n_img, 320, 320]
     n_img = imgs.shape[0]
     
@@ -67,7 +67,7 @@ def corrupt_coils(images, samples_loc):
     Back = torch.zeros(1, n_img, imgs.shape[1], imgs.shape[2], dtype=torch.complex64)
 
     for i in range(n_img):
-        x, y, back = corrupt(imgs[i], samples_loc)
+        x, y, back = corrupt(imgs[i], physics)
         # pdb.set_trace()
         if i == 0:
             Y = torch.zeros(1, n_img, y.shape[2], dtype=torch.complex64)
