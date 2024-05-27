@@ -6,6 +6,8 @@ import mrinufft
 import pdb
 
 NufftOperator = mrinufft.get_operator("finufft")
+# NufftOperator = mrinufft.get_operator("cufinufft")
+
 
 class Nufft(LinearPhysics):
     """
@@ -50,7 +52,6 @@ def corrupt(image, physics):
         image_torch = torch.from_numpy(image).unsqueeze(0).unsqueeze(0)
     
     x = image_torch.clone()
-    # x = x/x.abs().max() #normalize the data, so it is in the range [0,1]
     
     # Generate the physics
     # physics = Nufft(image_torch[0, 0].shape, samples_loc, density=None)

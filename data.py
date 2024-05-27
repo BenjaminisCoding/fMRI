@@ -13,9 +13,10 @@ import numpy as np
 
 path = '/neurospin/optimed/BenjaminLapostolle/fast-mri_smal/'
 
-def get_data(idx = 0, to_numpy = True, moments = False):
+def get_data(idx = 0, to_numpy = True, moments = False, Smaps = False, physics = None):
 
-    data_transform = T.UnetDataTransform(which_challenge="multicoil")
+    # data_transform = T.UnetDataTransform(which_challenge="multicoil")
+    data_transform = T.ClassicDataTransform(which_challenge="multicoil", Smaps = Smaps, physics = physics)
     dataset = mri_data.SliceDataset(
         root=pathlib.Path(path),
         transform=data_transform,
@@ -27,13 +28,14 @@ def get_data(idx = 0, to_numpy = True, moments = False):
         if idx != i:
             i += 1
             continue    
-        image, reconstruction, mean, std, fname, slice_num, _, kspace = batch
-        if to_numpy:
-            if moments:
-                return reconstruction[0].numpy(), kspace.numpy(), mean, std
-            else:
-                return reconstruction[0].numpy(), kspace.numpy()
-        return reconstruction
+        return batch 
+        # image, reconstruction, mean, std, fname, slice_num, _, kspace = batch
+        # if to_numpy:
+        #     if moments:
+        #         return image, reconstruction[0].numpy(), kspace.numpy(), mean, std
+        #     else:
+        #         return image, reconstruction[0].numpy(), kspace.numpy()
+        # return reconstruction
 
 def get_images_coils(kspace, target, c_abs = False):
 
@@ -70,27 +72,28 @@ def to_complex_tensor(tensor):
     
     return complex_tensor
 
-def get_Smaps(image, images, physics):
 
-    images_c = to_complex_tensor(images)
-    X, Y, Back = corrupt_coils(images_c, physics)    
-    images_c_2dim = to_tensor(images_c)
-    Smaps = torch.sqrt(images_c_2dim ** 2 / torch.sum(images_c_2dim ** 2, dim = 1))
-    Smaps_c = to_complex_tensor(Smaps)
-    mask = torch.Tensor(produce_mask(image)).unsqueeze(0).repeat(20,1,1).unsqueeze(0)
-    Smaps_c_final = Smaps_c * mask
-    return Smaps_c_final.squeeze(0).numpy()
+# def get_Smaps(image, images, physics):
 
-def produce_mask(image):
+#     images_c = to_complex_tensor(images)
+#     X, Y, Back = corrupt_coils(images_c, physics)    
+#     images_c_2dim = to_tensor(images_c)
+#     Smaps = torch.sqrt(images_c_2dim ** 2 / torch.sum(images_c_2dim ** 2, dim = 1))
+#     Smaps_c = to_complex_tensor(Smaps)
+#     mask = torch.Tensor(produce_mask(image)).unsqueeze(0).repeat(20,1,1).unsqueeze(0)
+#     Smaps_c_final = Smaps_c * mask
+#     return Smaps_c_final.squeeze(0).numpy()
+
+# def produce_mask(image):
     
-    ### could use Otsu instead of approxiamte quantile 
-    q = np.quantile(image, 0.6)
-    image_bin = image.copy()
-    image_bin[image > q] = 1
-    image_bin[image <= q] = 0
-    contours, _ = cv2.findContours(image_bin.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    brain_mask = cv2.drawContours(np.zeros_like(image_bin.astype(np.uint8)), contours, -1, (255), thickness=cv2.FILLED)
-    return brain_mask
+#     ### could use Otsu instead of approxiamte quantile 
+#     q = np.quantile(image, 0.6)
+#     image_bin = image.copy()
+#     image_bin[image > q] = 1
+#     image_bin[image <= q] = 0
+#     contours, _ = cv2.findContours(image_bin.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+#     brain_mask = cv2.drawContours(np.zeros_like(image_bin.astype(np.uint8)), contours, -1, (255), thickness=cv2.FILLED)
+#     return brain_mask
 
     
 

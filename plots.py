@@ -3,8 +3,9 @@ import matplotlib.pyplot as plt
 import numpy as np 
 import torch 
 import fastmri
+from metrics import compute_ssim
 
-def plot_rec(x, x_hat):
+def plot_rec(x, x_hat, mask = None, err_with_mask = False):
 
     # Compute reconstruction metric
     psnr = cal_psnr(x.abs(), x_hat.abs()).item()
@@ -12,16 +13,24 @@ def plot_rec(x, x_hat):
     plt.figure(figsize=(15,5))
     plt.subplot(131)
     # plt.imshow(np.real(x_hat).squeeze(), cmap='viridis')
-    plt.imshow(np.real(x_hat).squeeze())
-   
-    plt.title('Reconstruction, PSNR = ' + str(psnr))
+    plt.imshow(np.abs(x_hat).squeeze(), vmin = x.min(), vmax = x.max())
+    if mask is None:
+        plt.title('Reconstruction, PSNR = ' + str(psnr))
+    else:
+        ssim_score = compute_ssim(x*mask, x_hat*mask)
+        plt.title(f'Reconstruction, PSNR = {psnr: .4f}, SSIM = {ssim_score: .4f}')
+
     plt.axis('off')
     plt.subplot(132)
-    plt.imshow(np.real(x_hat-x).squeeze(), cmap='viridis')
+    if mask is not None and err_with_mask:
+        plt.imshow(np.abs(x_hat-x).squeeze() * mask, cmap='viridis')
+    else:
+        plt.imshow(np.abs(x_hat-x).squeeze(), cmap='viridis')
+    plt.colorbar()
     plt.title('Error')
     plt.axis('off')
     plt.subplot(133)
-    plt.imshow(np.real(x).squeeze(), cmap='viridis')
+    plt.imshow(x.squeeze(), cmap='viridis', vmin = x.min(), vmax = x.max())
     plt.title('Target')
     plt.axis('off')
     plt.show()
