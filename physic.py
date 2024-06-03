@@ -5,7 +5,9 @@ from mrinufft.density.geometry_based import voronoi
 import mrinufft
 import pdb
 
-NufftOperator = mrinufft.get_operator("finufft")
+# NufftOperator = mrinufft.get_operator("finufft")
+NufftOperator = mrinufft.get_operator("gpunufft")
+
 # NufftOperator = mrinufft.get_operator("cufinufft")
 
 

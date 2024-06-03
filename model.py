@@ -1,5 +1,7 @@
 from deepinv.optim.data_fidelity import L2
 from deepinv.optim import optim_builder, PnP
+from deepinv.optim.prior import Zero
+
 from deepinv.models import DRUNet
 from physic import Nufft
 import torch
@@ -7,50 +9,70 @@ import numpy as np
 from physic import corrupt
 from deepinv.models import WaveletDictDenoiser
 from tqdm import tqdm
-from utils import stand
+from utils import stand, Clip, match_image_stats
+from data import to_complex_tensor
+from torch.optim import Adam
+
 
 class ComplexDenoiser(torch.nn.Module):
-    def __init__(self, denoiser):
+    def __init__(self, denoiser, norm):
         super().__init__()
         self.denoiser = denoiser
+        self.norm = norm
 
     def forward(self, x, sigma):
-        noisy_batch = torch.cat((x.real, x.imag), 0)
+        if self.norm:
+            x_real, a_real, b_real = stand(x.real)
+            x_imag, a_imag, b_imag = stand(x.imag)
+        else:
+            x_real, x_imag = x.real, x.imag
+        noisy_batch = torch.cat((x_real, x_imag), 0)
+        # noisy_batch, a, b = stand(noisy_batch)
+        noisy_batch = noisy_batch.to('cuda')
         denoised_batch = self.denoiser(noisy_batch, sigma)
-        denoised = denoised_batch[0:1, ...]+1j*denoised_batch[1:2, ...]
-        return denoised
+        # denoised_batch = denoised_batch * (b -a) + a
+        if self.norm:
+            denoised = (denoised_batch[0:1, ...] * (b_real - a_real) + a_real)+1j*(denoised_batch[1:2, ...] * (b_imag - a_imag) + a_imag)
+        else:
+            denoised = denoised_batch[0:1, ...]+1j*denoised_batch[1:2, ...] 
+        return denoised.to('cpu')
 
-def get_model(max_iter = 8, sigma = 0.01):
+def get_model(max_iter = 8, sigma = 0.01, stepsize = None, norm = True, **kwargs):
     
     # Load PnP denoiser backbone
-    model = DRUNet(in_channels=1, out_channels=1, pretrained='download')
+    model = DRUNet(in_channels=1, out_channels=1, pretrained='download').to('cuda')
     model.eval()
-    model = ComplexDenoiser(model)
+    model = ComplexDenoiser(model, norm)
     
     
     # Compute the sequence of parameters along iterates
-    def get_DPIR_params(noise_level_img, max_iter=8):
+    def get_DPIR_params(noise_level_img, max_iter, stepsize):
         r"""
         Default parameters for the DPIR Plug-and-Play algorithm.
     
         :param float noise_level_img: Noise level of the input image.
         """
-        s1 = 49.0 / 255.0
+        # s1 = 49.0 / 255.0
+        s1 = 0.1
         s2 = noise_level_img
         # sigma_denoiser = np.logspace(np.log10(s1), np.log10(s2), max_iter).astype(
         #     np.float32
         # )
-        xsi = 0.9
+        xsi = 0.7
         sigma_denoiser = np.array([max(s1 * (xsi**i) , s2) for i in range(max_iter)]).astype(np.float32)
-        stepsize = (sigma_denoiser / max(0.01, noise_level_img)) ** 2
+        # stepsize = (sigma_denoiser / max(0.01, noise_level_img)) ** 2 * 100
+        stepsize = np.ones_like(sigma_denoiser) * stepsize
+        # stepsize = (sigma_denoiser / max(0.01, noise_level_img)) * stepsize * 0.5
         lamb = 1 / 0.23
+        # lamb = 1e8
+        print(sigma_denoiser, stepsize, lamb)
         return lamb, list(sigma_denoiser), list(stepsize), max_iter
     
     
     # Set the DPIR algorithm parameters
     # sigma = 0.01  # Noise level in the image domain
     # max_iter = 8  # Max number of iterations
-    lamb, sigma_denoiser, stepsize, max_iter = get_DPIR_params(sigma, max_iter=max_iter)
+    lamb, sigma_denoiser, stepsize, max_iter = get_DPIR_params(sigma, max_iter=max_iter, stepsize = stepsize)
     params_algo = {"stepsize": stepsize, "g_param": sigma_denoiser, "lambda": lamb}
     early_stop = False  # Do not stop algorithm with convergence criteria
     
@@ -58,48 +80,67 @@ def get_model(max_iter = 8, sigma = 0.01):
     data_fidelity = L2()
     
     # Specify the denoising prior
-    prior = PnP(denoiser=model)
+    prior = PnP(denoiser=model, **kwargs)
+    # prior = Zero()
     
     # instantiate the algorithm class to solve the IP problem.
     algo = optim_builder(
-        iteration="HQS",
+        # iteration="HQS",
+        # iteration="PGD",
+        iteration = 'FISTA',
         prior=prior,
         data_fidelity=data_fidelity,
         early_stop=early_stop,
         max_iter=max_iter,
         verbose=True,
         params_algo=params_algo,
+        **kwargs,
     )
     return algo
 
-def FISTA(image, physics, stepsize = 0.1, max_iter = 100, Smaps = None, to_stand = False):
+def FISTA(images, physics, stepsize = None, max_iter = 100, Smaps = None, init_norm = False, kspace = None, norm = False):
 
     # x, _, _ = corrupt(image, samples_loc)
-    x = torch.Tensor(image)
     # Generate the physics
     # physics = Nufft(x[0, 0].shape, samples_loc, density=None, real=False, Smaps = Smaps)
-    y = physics.A(x)
-    back = physics.A_adjoint(y)
-    if stand:
-        back = stand(back)
+    if kspace is None:
+        x = torch.Tensor(images) ### this is shit
+        y = physics.A(x) 
+        back = physics.A_adjoint(y)
+    else:
+        y = kspace
+        back = physics.A_adjoint(y)
+    if init_norm:
+        back = match_image_stats(to_complex_tensor(images[0]), back) ### to better initialize the fista algorithm
+        ### here we normalize the reverse image in the problem so it has the same statistics as the images we used
+        ### to produce the y_hat, ie the kspace target
+
+    if stepsize is None:
+        stepsize = 1 / physics.nufft.get_lipschitz_cst(max_iter = 20)
 
     data_fidelity = L2()
     a = 3  
-    sigma = 0.01
+    sigma = 0.00001
+    # sigma = 0
     # stepsize = 0.1
        
     # Select a prior
-    wav = WaveletDictDenoiser(non_linearity="soft", level=5, list_wv=['db4', 'db8'], max_iter=10)
-    device = 'cpu'
-    denoiser = ComplexDenoiser(wav).to(device)
-    
-    # max_iter = 100
-    
+    # wav = WaveletDictDenoiser(non_linearity="soft", level=5, list_wv=['db4', 'db8'], max_iter=10)
+    wav = WaveletDictDenoiser(non_linearity="soft", level=6, list_wv=['db4', 'db8'], max_iter=15)
+
+    device = 'cuda'
+    denoiser = ComplexDenoiser(wav, norm).to(device)
+        
     # Initialize algo variables
-    x_cur = back.clone().to(device)
-    w = back.clone().to(device)
-    u = back.clone().to(device)
+    x_cur = back.clone()
+    w = back.clone()
+    u = back.clone()
     
+    # Lists to store the data fidelity and prior values
+    data_fidelity_vals = []
+    prior_vals = []
+    L_x = [x_cur.clone()]
+
     # FISTA iteration
     with tqdm(total=max_iter) as pbar:
         for k in range(max_iter):
@@ -117,9 +158,125 @@ def FISTA(image, physics, stepsize = 0.1, max_iter = 100, Smaps = None, to_stand
             u = x_prev + tk * (x_cur - x_prev)
     
             crit = torch.linalg.norm(x_cur.flatten() - x_prev.flatten())
+
+            # Compute and store data fidelity
+            data_fidelity_val = data_fidelity(w, y, physics)
+            data_fidelity_vals.append(data_fidelity_val.item())
+
+            # Compute and store prior value (for the denoiser)
+            prior_val = sigma * stepsize * torch.sum(torch.abs(denoiser(x_cur, sigma * stepsize)))
+            prior_vals.append(prior_val.item())
     
             pbar.set_description(f'Iteration {k}, criterion = {crit:.4f}')
             pbar.update(1)
+            if k >= 0:
+                L_x.append(x_cur)
     
     x_hat = x_cur.clone()
-    return x_hat
+    return x_hat, data_fidelity_vals, prior_vals, L_x
+
+def baseline(images, physics, stepsize = None, max_iter = 100, Smaps = None, init_norm = False, kspace = None, norm = False):
+
+    if kspace is None:
+        x = torch.Tensor(images) ### this is shit
+        y = physics.A(x) 
+        back = physics.A_adjoint(y)
+    else:
+        y = kspace
+        back = physics.A_adjoint(y)
+    if init_norm:
+        back = match_image_stats(to_complex_tensor(images[0]), back) ### to better initialize the fista algorithm
+
+    if stepsize is None:
+        stepsize = 1 / physics.nufft.get_lipschitz_cst(max_iter = 20)
+
+    data_fidelity = L2()
+        
+    # Initialize algo variables
+    x_cur = back.clone()
+    
+    # Lists to store the data fidelity and prior values
+    data_fidelity_vals = []
+    L_x = [x_cur.clone()]
+
+    # FISTA iteration
+    with tqdm(total=max_iter) as pbar:
+        for k in range(max_iter):
+    
+            x_prev = x_cur.clone()
+            x_cur = x_cur - stepsize * data_fidelity.grad(x_cur, y, physics)
+
+            crit = torch.linalg.norm(x_cur.flatten() - x_prev.flatten())
+            # Compute and store data fidelity
+            data_fidelity_val = data_fidelity(x_cur, y, physics)
+            data_fidelity_vals.append(data_fidelity_val.item())
+
+            # Compute and store prior value (for the denoiser)
+    
+            pbar.set_description(f'Iteration {k}, criterion = {crit:.4f}')
+            pbar.update(1)
+            if k >= 0:
+                L_x.append(x_cur)
+    
+    x_hat = x_cur.clone()
+    return x_hat, data_fidelity_vals, L_x
+
+# def baseline_torch(images, physics, stepsize = None, max_iter = 100, Smaps = None, init_norm = False, kspace = None, norm = False):
+
+#     if kspace is None:
+#         x = torch.Tensor(images) ### this is shit
+#         y = physics.A(x) 
+#         back = physics.A_adjoint(y)
+#     else:
+#         y = kspace
+#         back = physics.A_adjoint(y)
+#     if init_norm:
+#         back = match_image_stats(to_complex_tensor(images[0]), back) ### to better initialize the fista algorithm
+
+#     if stepsize is None:
+#         stepsize = 1 / physics.nufft.get_lipschitz_cst(max_iter = 20)
+
+#     data_fidelity = L2()
+#     x_cur = back.clone().requires_grad_(False)
+
+#     data_fidelity_vals = []
+#     L_x = [x_cur.clone().detach()]
+
+#     optimizer = Adam([x_cur], lr=stepsize)
+
+#     # Optimization iteration
+#     with tqdm(total=max_iter) as pbar:
+#         for k in range(max_iter):
+#             optimizer.zero_grad()
+
+#             # Compute the data fidelity value
+#             data_fidelity_val = data_fidelity(x_cur, y, physics)
+#             custom_grad = data_fidelity.grad(x_cur, y, physics)
+
+#             # Manually set the gradient
+#             if x_cur.grad is None:
+#                 x_cur.grad = torch.zeros_like(x_cur)
+#             x_cur.grad.data.copy_(custom_grad)
+            
+#             # Perform a step with the optimizer
+#             optimizer.step()
+
+#             # Detach x_cur to avoid tracking history in the next iteration
+#             x_cur = x_cur.detach().requires_grad_(False)
+
+#             crit = torch.linalg.norm(x_cur.flatten() - L_x[-1].flatten())
+
+#             # Store data fidelity value
+#             data_fidelity_vals.append(data_fidelity_val.item())
+
+#             pbar.set_description(f'Iteration {k}, criterion = {crit:.4f}')
+#             pbar.update(1)
+
+#             # Store the current estimate
+#             L_x.append(x_cur.clone().detach())
+
+#     x_hat = x_cur.clone().detach()
+#     return x_hat, data_fidelity_vals, L_x
+
+    
+

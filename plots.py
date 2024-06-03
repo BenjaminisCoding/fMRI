@@ -4,16 +4,23 @@ import numpy as np
 import torch 
 import fastmri
 from metrics import compute_ssim
+from utils import stand, Clip 
 
-def plot_rec(x, x_hat, mask = None, err_with_mask = False):
+def plot_rec(x, x_hat, mask = None, err_with_mask = False, clip = True):
 
     # Compute reconstruction metric
+    if clip: 
+        x, x_hat = stand(x.abs())[0], stand(x_hat.abs())[0]
+    else:
+        x, x_hat = x.abs(), x_hat.abs()
     psnr = cal_psnr(x.abs(), x_hat.abs()).item()
     
     plt.figure(figsize=(15,5))
     plt.subplot(131)
     # plt.imshow(np.real(x_hat).squeeze(), cmap='viridis')
-    plt.imshow(np.abs(x_hat).squeeze(), vmin = x.min(), vmax = x.max())
+    # plt.imshow(np.abs(x_hat).squeeze(), vmin = x.min(), vmax = x.max())
+    plt.imshow(np.abs(x_hat).squeeze())
+
     if mask is None:
         plt.title('Reconstruction, PSNR = ' + str(psnr))
     else:
