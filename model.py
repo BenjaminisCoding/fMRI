@@ -11,7 +11,7 @@ from deepinv.models import WaveletDictDenoiser
 from tqdm import tqdm
 from utils import stand, Clip, match_image_stats
 from data import to_complex_tensor
-from torch.optim import Adam
+# from torch.optim import Adam
 
 
 class ComplexDenoiser(torch.nn.Module):
@@ -37,7 +37,7 @@ class ComplexDenoiser(torch.nn.Module):
             denoised = denoised_batch[0:1, ...]+1j*denoised_batch[1:2, ...] 
         return denoised.to('cpu')
 
-def get_model(max_iter = 8, sigma = 0.01, stepsize = None, norm = True, **kwargs):
+def get_model(max_iter = 8, sigma = 0.01, s1 =10, lamb = 0.1, stepsize = None, norm = True, **kwargs):
     
     # Load PnP denoiser backbone
     model = DRUNet(in_channels=1, out_channels=1, pretrained='download').to('cuda')
@@ -45,35 +45,10 @@ def get_model(max_iter = 8, sigma = 0.01, stepsize = None, norm = True, **kwargs
     model = ComplexDenoiser(model, norm)
     
     
-    # Compute the sequence of parameters along iterates
-    def get_DPIR_params(noise_level_img, max_iter, stepsize):
-        r"""
-        Default parameters for the DPIR Plug-and-Play algorithm.
-    
-        :param float noise_level_img: Noise level of the input image.
-        """
-        # s1 = 49.0 / 255.0
-        s1 = 0.1
-        s2 = noise_level_img
-        # sigma_denoiser = np.logspace(np.log10(s1), np.log10(s2), max_iter).astype(
-        #     np.float32
-        # )
-        xsi = 0.7
-        sigma_denoiser = np.array([max(s1 * (xsi**i) , s2) for i in range(max_iter)]).astype(np.float32)
-        # stepsize = (sigma_denoiser / max(0.01, noise_level_img)) ** 2 * 100
-        stepsize = np.ones_like(sigma_denoiser) * stepsize
-        # stepsize = (sigma_denoiser / max(0.01, noise_level_img)) * stepsize * 0.5
-        lamb = 1 / 0.23
-        # lamb = 1e8
-        print(sigma_denoiser, stepsize, lamb)
-        return lamb, list(sigma_denoiser), list(stepsize), max_iter
-    
-    
     # Set the DPIR algorithm parameters
-    # sigma = 0.01  # Noise level in the image domain
-    # max_iter = 8  # Max number of iterations
-    lamb, sigma_denoiser, stepsize, max_iter = get_DPIR_params(sigma, max_iter=max_iter, stepsize = stepsize)
+    lamb, sigma_denoiser, stepsize, max_iter = get_DPIR_params(sigma, max_iter=max_iter, stepsize = stepsize, s1 = s1 * sigma, lamb = lamb)
     params_algo = {"stepsize": stepsize, "g_param": sigma_denoiser, "lambda": lamb}
+
     early_stop = False  # Do not stop algorithm with convergence criteria
     
     # Select the data fidelity term
@@ -82,6 +57,7 @@ def get_model(max_iter = 8, sigma = 0.01, stepsize = None, norm = True, **kwargs
     # Specify the denoising prior
     prior = PnP(denoiser=model, **kwargs)
     # prior = Zero()
+    # prior = None
     
     # instantiate the algorithm class to solve the IP problem.
     algo = optim_builder(
@@ -97,6 +73,26 @@ def get_model(max_iter = 8, sigma = 0.01, stepsize = None, norm = True, **kwargs
         **kwargs,
     )
     return algo
+
+# Compute the sequence of parameters along iterates
+def get_DPIR_params(noise_level_img, max_iter, stepsize, s1, lamb):
+    r"""
+    Default parameters for the DPIR Plug-and-Play algorithm.
+
+    :param float noise_level_img: Noise level of the input image.
+    """
+    # s1 = 49.0 / 255.0
+    # s1 = 0.1
+    s2 = noise_level_img
+    # sigma_denoiser = np.logspace(np.log10(s1), np.log10(s2), max_iter).astype(
+    #     np.float32
+    # )
+    xsi = 0.7
+    sigma_denoiser = np.array([max(s1 * (xsi**i) , s2) for i in range(max_iter)]).astype(np.float32)
+    stepsize = np.ones_like(sigma_denoiser) * stepsize
+    # stepsize = (sigma_denoiser / max(0.01, noise_level_img)) * stepsize * 0.5
+    # lamb = 1 / 0.23
+    return lamb, list(sigma_denoiser), list(stepsize), max_iter
 
 def FISTA(images, physics, stepsize = None, max_iter = 100, Smaps = None, init_norm = False, kspace = None, norm = False):
 
@@ -120,7 +116,7 @@ def FISTA(images, physics, stepsize = None, max_iter = 100, Smaps = None, init_n
 
     data_fidelity = L2()
     a = 3  
-    sigma = 0.00001
+    sigma = 0.0001
     # sigma = 0
     # stepsize = 0.1
        
