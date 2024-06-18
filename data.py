@@ -102,7 +102,7 @@ def to_complex_tensor(tensor):
 #     brain_mask = cv2.drawContours(np.zeros_like(image_bin.astype(np.uint8)), contours, -1, (255), thickness=cv2.FILLED)
 #     return brain_mask
 
-    
+
 class ClassicDataTransform:
     """
     Data Transformer for training U-Net models.
@@ -162,14 +162,12 @@ class ClassicDataTransform:
             used for normalization, the filename, and the slice number.
         """
         y = to_tensor(kspace)
-        filter_size = (100, 100)
-        y_low_freq = apply_low_frequency_filter(y.unsqueeze(0), filter_size)
+
         # check for max value
         max_value = attrs["max"] if "max" in attrs.keys() else 0.0
 
         # inverse Fourier transform to get zero filled solution
         images_nostand = fastmri.ifft2c(y)
-        images_low_freq = fastmri.ifft2c(y_low_freq)
         # crop input to correct size
         if target is not None:
             crop_size = (target.shape[-2], target.shape[-1])
@@ -187,7 +185,6 @@ class ClassicDataTransform:
             target_torch = torch.Tensor([0])
 
         images_nostand = T.complex_center_crop(images_nostand, crop_size)
-        images_low_freq = T.complex_center_crop(images_low_freq, crop_size)
         ### normalization 
 
         # clip = Clip()
@@ -206,7 +203,7 @@ class ClassicDataTransform:
             return target_torch, images, y, y_hat
 
         mask = self.__compute_mask__(images_nostand)
-        Smaps = self.compute_Smaps(images_low_freq, y_hat, mask)
+        Smaps = self.compute_Smaps(images, y_hat, mask)
         return target_torch, images, y, y_hat, Smaps, mask
     
     def compute_Smaps(self, images, y_hat, mask):
@@ -219,8 +216,6 @@ class ClassicDataTransform:
         SOS = np.sum((np.abs(images_hat)**2), axis = 0)
         Smaps = images_hat / np.sqrt(SOS)
         return Smaps * mask
-
-
     
     def __compute_mask__(self, images):
 
@@ -243,33 +238,32 @@ class ClassicDataTransform:
         brain_mask[brain_mask == 255] = 1
         return brain_mask
 
-
-def apply_low_frequency_filter(kspace, filter_size):
-    """
-    Applies a low-frequency filter to the k-space data.
+# def apply_low_frequency_filter(kspace, filter_size):
+#     """
+#     Applies a low-frequency filter to the k-space data.
     
-    Parameters:
-    - kspace: A tensor of shape (1, 20, 640, 320, 2) representing the k-space data.
-    - filter_size: A tuple (height, width) specifying the size of the low-frequency filter.
+#     Parameters:
+#     - kspace: A tensor of shape (1, 20, 640, 320, 2) representing the k-space data.
+#     - filter_size: A tuple (height, width) specifying the size of the low-frequency filter.
     
-    Returns:
-    - filtered_kspace: The low-frequency filtered k-space data with the same shape as input.
-    """
-    # Combine real and imaginary parts into a complex tensor
-    kspace_complex = torch.view_as_complex(kspace)
+#     Returns:
+#     - filtered_kspace: The low-frequency filtered k-space data with the same shape as input.
+#     """
+#     # Combine real and imaginary parts into a complex tensor
+#     kspace_complex = torch.view_as_complex(kspace)
     
-    # Create a low-frequency mask
-    mask = torch.zeros_like(kspace_complex)
-    center_h = kspace_complex.shape[2] // 2
-    center_w = kspace_complex.shape[3] // 2
-    h_half = filter_size[0] // 2
-    w_half = filter_size[1] // 2
-    mask[:, :, center_h - h_half:center_h + h_half, center_w - w_half:center_w + w_half] = 1
+#     # Create a low-frequency mask
+#     mask = torch.zeros_like(kspace_complex)
+#     center_h = kspace_complex.shape[2] // 2
+#     center_w = kspace_complex.shape[3] // 2
+#     h_half = filter_size[0] // 2
+#     w_half = filter_size[1] // 2
+#     mask[:, :, center_h - h_half:center_h + h_half, center_w - w_half:center_w + w_half] = 1
     
-    # Apply the mask to the k-space data
-    filtered_kspace_complex = kspace_complex * mask
+#     # Apply the mask to the k-space data
+#     filtered_kspace_complex = kspace_complex * mask
     
-    # Convert back to separate real and imaginary parts
-    filtered_kspace = torch.view_as_real(filtered_kspace_complex)
+#     # Convert back to separate real and imaginary parts
+#     filtered_kspace = torch.view_as_real(filtered_kspace_complex)
     
-    return filtered_kspace
+#     return filtered_kspace
