@@ -190,5 +190,47 @@ def baseline(images, physics, stepsize = None, max_iter = 100, init_norm = False
     x_hat = x_cur.clone()
     return x_hat, data_fidelity_vals, L_x
 
+
+# def baseline(images, physics, stepsize = None, max_iter = 100, Smaps = None, init_norm = False, kspace = None, norm = False):
+
+#     if kspace is None:
+#         x = torch.Tensor(images) ### this is shit
+#         y = physics.A(x) 
+#         back = physics.A_adjoint(y)
+#     else:
+#         y = kspace
+#         back = physics.A_adjoint(y)
+#     if init_norm:
+#         back = match_image_stats(to_complex_tensor(images[0]), back) ### to better initialize the fista algorithm
+#     if stepsize is None:
+#         stepsize = 1 / physics.nufft.get_lipschitz_cst(max_iter = 20)
+#     data_fidelity = L2()
+        
+#     # Initialize algo variables
+#     x_cur = back.clone()
+    
+#     # Lists to store the data fidelity and prior values
+#     data_fidelity_vals = []
+#     L_x = [x_cur.clone()]
+#     # FISTA iteration
+#     with tqdm(total=max_iter) as pbar:
+#         for k in range(max_iter):
+    
+#             x_prev = x_cur.clone()
+#             x_cur = x_cur - stepsize * data_fidelity.grad(x_cur, y, physics)
+#             crit = torch.linalg.norm(x_cur.flatten() - x_prev.flatten())
+#             # Compute and store data fidelity
+#             data_fidelity_val = data_fidelity(x_cur, y, physics)
+#             data_fidelity_vals.append(data_fidelity_val.item())
+#             # Compute and store prior value (for the denoiser)
+    
+#             pbar.set_description(f'Iteration {k}, criterion = {crit:.4f}')
+#             pbar.update(1)
+#             if k >= 0:
+#                 L_x.append(x_cur)
+    
+#     x_hat = x_cur.clone()
+#     return x_hat, data_fidelity_vals, L_x
+
     
 
