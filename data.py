@@ -134,6 +134,7 @@ class ClassicDataTransform:
         self.use_seed = use_seed
         self.Smaps = Smaps 
         self.physics = physics 
+        self.low_freq = True
 
         
 
@@ -203,11 +204,12 @@ class ClassicDataTransform:
             return target_torch, images, y, y_hat
 
         mask = self.__compute_mask__(images_nostand)
-        Smaps = self.compute_Smaps(images, y_hat, mask)
+        Smaps = self.compute_Smaps(images, y, mask, low_freq=self.low_freq)
         return target_torch, images, y, y_hat, Smaps, mask
     
-    def compute_Smaps(self, images, y_hat, mask):
-        
+    def compute_Smaps(self, images, y, mask, low_freq):
+        if low_freq:
+            return self.compute_Smaps_low(images, y, mask)
         images_hat = T.tensor_to_complex_np(images)
         # images_hat = np.zeros_like(images[:, :, :, 0], dtype=np.complex64)
 
@@ -216,6 +218,19 @@ class ClassicDataTransform:
         SOS = np.sum((np.abs(images_hat)**2), axis = 0)
         Smaps = images_hat / np.sqrt(SOS)
         return Smaps * mask
+    
+    def compute_Smaps_low(self, images, y, mask):
+
+        filter_size = (50, 50)
+        y_low = apply_hamming_filter(y, filter_size)
+        crop_size = (320,320)
+        images_low = T.complex_center_crop(fastmri.ifft2c(y_low), crop_size)
+        images_low = T.tensor_to_complex_np(images_low[0])
+        SOS = np.sum((np.abs(images_low)**2), axis = 0)
+        Smaps_low = images_low / np.sqrt(SOS)
+        Smaps_low *= mask
+        return Smaps_low
+
     
     def __compute_mask__(self, images):
 
@@ -267,3 +282,49 @@ class ClassicDataTransform:
 #     filtered_kspace = torch.view_as_real(filtered_kspace_complex)
     
 #     return filtered_kspace
+
+
+def apply_hamming_filter(kspace, filter_size):
+    """
+    Applies a Hamming window filter to the k-space data.
+    
+    Parameters:
+    - kspace: A tensor of shape (1, 20, 640, 320, 2) representing the k-space data.
+    - filter_size: A tuple (height, width) specifying the size of the low-frequency filter.
+    
+    Returns:
+    - filtered_kspace: The Hamming window filtered k-space data with the same shape as input.
+    """
+    # Combine real and imaginary parts into a complex tensor
+    kspace_complex = torch.view_as_complex(kspace).unsqueeze(0) ### change the unsqueeze if necessary
+    
+    # Create the Hamming window filter
+    hamming_window_1d_h = np.hamming(filter_size[0])
+    hamming_window_1d_w = np.hamming(filter_size[1])
+    hamming_window_2d = np.outer(hamming_window_1d_h, hamming_window_1d_w)
+    
+    # Pad the Hamming window to the size of the k-space data
+    padded_hamming_window = np.zeros((kspace_complex.shape[2], kspace_complex.shape[3]))
+    center_h = kspace_complex.shape[2] // 2
+    center_w = kspace_complex.shape[3] // 2
+    h_half = filter_size[0] // 2
+    w_half = filter_size[1] // 2
+    
+    # Adjust the indices to correctly place the Hamming window at the center
+    start_h = center_h - h_half
+    end_h = start_h + filter_size[0]
+    start_w = center_w - w_half
+    end_w = start_w + filter_size[1]
+    
+    padded_hamming_window[start_h:end_h, start_w:end_w] = hamming_window_2d
+    
+    # Convert the Hamming window to a PyTorch tensor
+    hamming_filter = torch.tensor(padded_hamming_window, dtype=torch.complex64).to(kspace.device)
+    
+    # Apply the Hamming filter to the k-space data
+    filtered_kspace_complex = kspace_complex * hamming_filter
+    
+    # Convert back to separate real and imaginary parts
+    filtered_kspace = torch.view_as_real(filtered_kspace_complex)
+    
+    return filtered_kspace
