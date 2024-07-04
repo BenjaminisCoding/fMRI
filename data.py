@@ -18,10 +18,10 @@ from typing import Dict, NamedTuple, Optional, Sequence, Tuple, Union
 
 path = '/neurospin/optimed/BenjaminLapostolle/fast-mri_smal/'
 
-def get_data(idx = 0, Smaps = False, physics = None):
+def get_data(idx = 0, Smaps = False, physics = None, low_freq = True, var_noise = 0):
 
     # data_transform = T.UnetDataTransform(which_challenge="multicoil")
-    data_transform = ClassicDataTransform(which_challenge="multicoil", Smaps = Smaps, physics = physics)
+    data_transform = ClassicDataTransform(which_challenge="multicoil", Smaps = Smaps, physics = physics, low_freq = low_freq, var_noise = var_noise)
     dataset = mri_data.SliceDataset(
         root=pathlib.Path(path),
         transform=data_transform,
@@ -116,6 +116,8 @@ class ClassicDataTransform:
         physics = None,
         use_seed: bool = True,
         use_abs: bool = False,
+        low_freq: bool = True,
+        var_noise: float = 0,
     ):
         """
         Args:
@@ -134,9 +136,8 @@ class ClassicDataTransform:
         self.use_seed = use_seed
         self.Smaps = Smaps 
         self.physics = physics 
-        self.low_freq = True
-
-        
+        self.low_freq = low_freq
+        self.var_noise = var_noise
 
     def __call__(
         self,
@@ -198,7 +199,9 @@ class ClassicDataTransform:
         
         y_hat = []
         for n_coil in range(y.shape[0]):
-            y_hat.append(self.physics.A(T.tensor_to_complex_np(images[n_coil])).squeeze(0).squeeze(0))
+            y_coil = self.physics.A(T.tensor_to_complex_np(images[n_coil])).squeeze(0).squeeze(0)
+            y_coil.real, y_coil.imag = y_coil.real + np.random.randn(y_coil.shape[0]) * np.sqrt(self.var_noise), y_coil.imag + np.random.randn(y_coil.shape[0]) * np.sqrt(self.var_noise)
+            y_hat.append(y_coil)
 
         if not(self.Smaps):
             return target_torch, images, y, y_hat
