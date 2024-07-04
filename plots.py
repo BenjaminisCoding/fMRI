@@ -13,7 +13,7 @@ def plot_rec(x, x_hat, mask = None, err_with_mask = False, clip = True):
         x, x_hat = stand(x.abs())[0], stand(x_hat.abs())[0]
     else:
         x, x_hat = x.abs(), x_hat.abs()
-    psnr = cal_psnr(x.abs(), x_hat.abs()).item()
+    psnr = cal_psnr(x.abs().squeeze(0), x_hat.abs().squeeze(0).squeeze(0)).item()
     
     plt.figure(figsize=(15,5))
     plt.subplot(131)
