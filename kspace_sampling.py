@@ -5,16 +5,17 @@ from mrinufft.io.nsp import read_trajectory
 from mrinufft.trajectories.display import display_2D_trajectory
 import matplotlib.pyplot as plt 
 import numpy as np
-from snkf.handlers.acquisition.cartesian_sampling import get_cartesian_mask
+# from snkf.handlers.acquisition.cartesian_sampling import get_cartesian_mask
 import pdb
 
 def get_samples(string, *args, **kwargs):
     
     trajectory_initializers = {
         "sparkling": (initialize_2D_sparkling, ("sparkling_2d",), {}),
-        "cartesian": (initialize_2D_cartesian, (args), {"Ns": kwargs['Ns']}),
+        # "cartesian": (initialize_2D_cartesian, (args), {"Ns": kwargs['Ns']}),
+        'cartesian': (None, None),
         "radial": (initialize_2D_radial, (args), kwargs),
-        "spiral": (initialize_2D_spiral, (kwargs['Nc'], kwargs['Ns']), {}),
+        "spiral": (initialize_2D_spiral, (kwargs['Nc'], kwargs['Ns']), {"nb_revolutions":1, "in_out":True}),
         "cones": (initialize_2D_cones, (kwargs['Nc'], kwargs['Ns']), {"nb_zigzags": 5, "width": 1}),
         "sinusoide": (initialize_2D_sinusoide, (kwargs['Nc'], kwargs['Ns']), {}),
         "propeller": (initialize_2D_propeller, (kwargs['Nc'], kwargs['Ns']), {"nb_strips": 10}),
@@ -39,17 +40,17 @@ def initialize_2D_sparkling(path):
     traj = traj
     return traj
 
-def initialize_2D_cartesian(Ns, KMAX = 0.5):
+# def initialize_2D_cartesian(Ns, KMAX = 0.5):
 
-    s = 320
-    samples_loc = get_cartesian_mask((s,s), 1, accel_axis = 1)
-    Nc = (samples_loc[0,0] == 1).sum()
-    loc = np.arange(-s // 2, s // 2) / s
-    loc_ = loc[samples_loc[0,0] == 1]
-    trajectory = np.zeros((Nc, Ns, 2))
-    segment = np.linspace(-1, 1, Ns) * KMAX
-    for i in range(0,Nc):
-        trajectory[i,:,0] = np.ones(Ns) * loc_[i]
-        trajectory[i,:,1] = segment
+#     s = 320
+#     samples_loc = get_cartesian_mask((s,s), 1, accel_axis = 1)
+#     Nc = (samples_loc[0,0] == 1).sum()
+#     loc = np.arange(-s // 2, s // 2) / s
+#     loc_ = loc[samples_loc[0,0] == 1]
+#     trajectory = np.zeros((Nc, Ns, 2))
+#     segment = np.linspace(-1, 1, Ns) * KMAX
+#     for i in range(0,Nc):
+#         trajectory[i,:,0] = np.ones(Ns) * loc_[i]
+#         trajectory[i,:,1] = segment
         
-    return trajectory.astype(np.float32)
+#     return trajectory.astype(np.float32)
