@@ -1,0 +1,5 @@
+---
+defaults:
+  - data: params_acquisition
+  - model: GD
+num_epochs: 50

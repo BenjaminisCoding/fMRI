@@ -1,0 +1,17 @@
+---
+MODEL_NAME: PnP
+SAVE_PATH: /home/bl279243/code/fMRI/results/PnP 
+path_weights_2: /home/bl279243/ckpts_lights/drunet_unsupervised_denoising_0_color/24-07-22-22:07:12/ckp_41.pth.tar
+path_weights: /home/bl279243/code/fMRI/weights/ckp_300_state_dict.pth.tar
+iterator_method: PGD
+preconditioner: static 
+sigma: 1e-6
+start_sigma_factor: 1e1
+xsi: 0.97
+lamb: 0.1
+early_stop: False
+verbose: True
+
+
+
+

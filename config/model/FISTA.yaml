@@ -1,0 +1,16 @@
+---
+MODEL_NAME: FISTA
+SAVE_PATH: /home/bl279243/code/fMRI/results/FISTA 
+sigma: 0.005
+a: 3
+wavelet_parameters:
+  non_linearity: soft
+  level: 6
+  list_wv: 
+    - db4
+    - db8
+  max_iter: 15
+ 
+
+
+

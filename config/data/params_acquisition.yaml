@@ -1,0 +1,14 @@
+---
+DATASET_PATH: /neurospin/optimed/BenjaminLapostolle/fast-mri_smal
+ACCELERATION_FACTOR: 8
+TRAJECTORY: spiral
+DENSITY: pipe
+VAR_NOISE: 1e-11
+DATA_ID: 0
+TEST: False
+CHALLENGE: multicoil
+COMBINE_METHOD: VCC
+FILTER_SIZE_SMAPS: 
+  - 50
+  - 50
+
